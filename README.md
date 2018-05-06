@@ -1,4 +1,5 @@
-#OpenVR Capture plugin for OBS source code
+# OpenVR Capture plugin for OBS source code
+
 by Keijo "Kegetys" Ruotsalainen, http://www.kegetys.fi
 
 Compiling:

@@ -36,445 +36,458 @@ extern "C" {
     blog(LOG_WARNING, format, ##__VA_ARGS__)
 
 struct croppreset {
-  char name[128];
-  float top;
-  float left;
-  float bottom;
-  float right;
+	char name[128];
+	float top;
+	float left;
+	float bottom;
+	float right;
 };
 std::vector<croppreset> croppresets;
 
 struct win_openvr {
-  obs_source_t *source;
+	obs_source_t *source;
 
-  bool         righteye;
-  int          croppreset;
-  float        croptop;
-  float        cropleft;
-  float        cropbottom;
-  float        cropright;
+	bool         righteye;
+	int          croppreset;
+	float        croptop;
+	float        cropleft;
+	float        cropbottom;
+	float        cropright;
 
-  gs_texture_t *texture;
-  ID3D11Device *dev11;
-  ID3D11DeviceContext *ctx11;
-  ID3D11Resource* tex;
-  ID3D11ShaderResourceView *mirrorSrv;
+	gs_texture_t *texture;
+	ID3D11Device *dev11;
+	ID3D11DeviceContext *ctx11;
+	ID3D11Resource* tex;
+	ID3D11ShaderResourceView *mirrorSrv;
 
-  ID3D11Texture2D *texCrop;
+	ID3D11Texture2D *texCrop;
 
-  DWORD lastCheckTick;
+	DWORD lastCheckTick;
 
-  int x;
-  int y;
-  int width;
-  int height;
+	int x;
+	int y;
+	int width;
+	int height;
 
-  bool initialized;
-  bool active;
+	bool initialized;
+	bool active;
 };
 
-static void win_openvr_init(void *data, bool forced=false)
+static void win_openvr_init(void *data, bool forced = false)
 {
-  struct win_openvr *context = (win_openvr*) data;
+	struct win_openvr *context = (win_openvr*)data;
 
-  if (context->initialized)
-    return;
+	if (context->initialized)
+		return;
 
-  // Dont attempt to init OVR too often due to memory leak in VR_Init
-  if (GetTickCount() - 5000 < context->lastCheckTick && !forced)
-  { 
-    return;
-  }
+	// Dont attempt to init OVR too often due to memory leak in VR_Init
+	if (GetTickCount() - 5000 < context->lastCheckTick && !forced)
+	{
+		return;
+	}
 
-  // Init OpenVR, create D3D11 device and get shared mirror texture
-  vr::EVRInitError err = vr::VRInitError_None;
-  vr::VR_Init(&err, vr::VRApplication_Background);
-  if (err != vr::VRInitError_None)
-  {
-    debug("OpenVR not available");
-    // OpenVR not available
-    context->lastCheckTick = GetTickCount();
-    return;
-  }
+	// Init OpenVR, create D3D11 device and get shared mirror texture
+	vr::EVRInitError err = vr::VRInitError_None;
+	vr::VR_Init(&err, vr::VRApplication_Background);
+	if (err != vr::VRInitError_None)
+	{
+		debug("OpenVR not available");
+		// OpenVR not available
+		context->lastCheckTick = GetTickCount();
+		return;
+	}
 
-  HRESULT hr;
-  D3D_FEATURE_LEVEL featureLevel;
-  hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, 0, 0, 0, 0, D3D11_SDK_VERSION, &context->dev11, &featureLevel, &context->ctx11);
-  if (FAILED(hr)) {
-    warn("win_openvr_show: D3D11CreateDevice failed");
-    return;
-  }
+	HRESULT hr;
+	D3D_FEATURE_LEVEL featureLevel;
+	hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, 0, 0, 0, 0, D3D11_SDK_VERSION, &context->dev11, &featureLevel, &context->ctx11);
+	if (FAILED(hr)) {
+		warn("win_openvr_show: D3D11CreateDevice failed");
+		return;
+	}
 
-  vr::VRCompositor()->GetMirrorTextureD3D11(context->righteye ? vr::Eye_Right : vr::Eye_Left, context->dev11, (void**) &context->mirrorSrv);
-  if (!context->mirrorSrv)
-  {
-    warn("win_openvr_show: GetMirrorTextureD3D11 failed");
-    return;
-  }
+	vr::VRCompositor()->GetMirrorTextureD3D11(context->righteye ? vr::Eye_Right : vr::Eye_Left, context->dev11, (void**)&context->mirrorSrv);
+	if (!context->mirrorSrv)
+	{
+		warn("win_openvr_show: GetMirrorTextureD3D11 failed");
+		return;
+	}
 
-  // Get ID3D11Resource from shader resource view
-  context->mirrorSrv->GetResource(&context->tex);
-  if (!context->tex)
-  {
-    warn("win_openvr_show: GetResource failed");
-    return;
-  }
+	// Get ID3D11Resource from shader resource view
+	context->mirrorSrv->GetResource(&context->tex);
+	if (!context->tex)
+	{
+		warn("win_openvr_show: GetResource failed");
+		return;
+	}
 
-  // Get the size from Texture2D
-  ID3D11Texture2D *tex2D;
-  context->tex->QueryInterface<ID3D11Texture2D>(&tex2D);
-  if (!tex2D)
-  {
-    warn("win_openvr_show: QueryInterface failed");
-    return;
-  }
+	// Get the size from Texture2D
+	ID3D11Texture2D *tex2D;
+	context->tex->QueryInterface<ID3D11Texture2D>(&tex2D);
+	if (!tex2D)
+	{
+		warn("win_openvr_show: QueryInterface failed");
+		return;
+	}
 
-  D3D11_TEXTURE2D_DESC desc;
-  tex2D->GetDesc(&desc);
+	D3D11_TEXTURE2D_DESC desc;
+	tex2D->GetDesc(&desc);
 
-  // Apply wanted cropping to size
-  context->x = (int) (desc.Width * context->cropleft);
-  context->y = (int) (desc.Height * context->croptop);
-  desc.Width = (int) (desc.Width * context->cropright - context->x);
-  desc.Height = (int) (desc.Height * context->cropbottom - context->y);
+	// Apply wanted cropping to size
+	context->x = (int)(desc.Width * context->cropleft);
+	context->y = (int)(desc.Height * context->croptop);
+	desc.Width = (int)(desc.Width * context->cropright - context->x);
+	desc.Height = (int)(desc.Height * context->cropbottom - context->y);
 
-  context->width = desc.Width;
-  context->height = desc.Height;
+	context->width = desc.Width;
+	context->height = desc.Height;
 
-  tex2D->Release();
+	tex2D->Release();
 
-  // Create cropped, linear texture
-  // Using linear here will cause correct sRGB gamma to be applied
-  desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-  hr = context->dev11->CreateTexture2D(&desc, NULL, &context->texCrop);
-  if (FAILED(hr)) {
-    warn("win_openvr_show: CreateTexture2D failed");
-    return;
-  }
+	// Create cropped, linear texture
+	// Using linear here will cause correct sRGB gamma to be applied
+	desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	hr = context->dev11->CreateTexture2D(&desc, NULL, &context->texCrop);
+	if (FAILED(hr)) {
+		warn("win_openvr_show: CreateTexture2D failed");
+		return;
+	}
 
-  // Get IDXGIResource, then share handle, and open it in OBS device
-  IDXGIResource *res;
-  hr = context->texCrop->QueryInterface(__uuidof(IDXGIResource), (void**) &res);
-  if (FAILED(hr)) {
-    warn("win_openvr_show: QueryInterface failed");
-    return;
-  }
+	// Get IDXGIResource, then share handle, and open it in OBS device
+	IDXGIResource *res;
+	hr = context->texCrop->QueryInterface(__uuidof(IDXGIResource), (void**)&res);
+	if (FAILED(hr)) {
+		warn("win_openvr_show: QueryInterface failed");
+		return;
+	}
 
-  HANDLE handle = NULL;
-  hr = res->GetSharedHandle(&handle);
-  if (FAILED(hr)) {
-    warn("win_openvr_show: GetSharedHandle failed");
-    return;
-  }
-  res->Release();
+	HANDLE handle = NULL;
+	hr = res->GetSharedHandle(&handle);
+	if (FAILED(hr)) {
+		warn("win_openvr_show: GetSharedHandle failed");
+		return;
+	}
+	res->Release();
 
-  obs_enter_graphics();
-  gs_texture_destroy(context->texture);
-  context->texture = gs_texture_open_shared((uint32_t) handle);
-  obs_leave_graphics();
-  
-  context->initialized = true;
+	obs_enter_graphics();
+	gs_texture_destroy(context->texture);
+	context->texture = gs_texture_open_shared((uint32_t)handle);
+	obs_leave_graphics();
+
+	context->initialized = true;
 }
 
 static void win_openvr_deinit(void *data)
 {
-  struct win_openvr *context = (win_openvr*) data;
+	struct win_openvr *context = (win_openvr*)data;
 
-  context->initialized = false;
+	context->initialized = false;
 
-  if (context->texture) {
-    obs_enter_graphics();
-    gs_texture_destroy(context->texture);
-    obs_leave_graphics();
-    context->texture = NULL;
-  }
+	if (context->texture) {
+		obs_enter_graphics();
+		gs_texture_destroy(context->texture);
+		obs_leave_graphics();
+		context->texture = NULL;
+	}
 
-  if (context->tex)
-    context->tex->Release();
-  if (context->texCrop)
-    context->texCrop->Release();
-  vr::VR_Shutdown(); // Releases mirrorSrv
-  /*if (context->mirrorSrv)
-    context->mirrorSrv->Release();*/
-  if (context->ctx11)
-    context->ctx11->Release();
-  if (context->dev11)
-  {
-    if (context->dev11->Release() != 0)
-    {
-      warn("win_openvr_deinit: device refcount not zero!");
-    }
-  }
+	if (context->tex)
+		context->tex->Release();
+	if (context->texCrop)
+		context->texCrop->Release();
+	//  if (context->mirrorSrv)
+		//vr::VRCompositor()->ReleaseMirrorTextureD3D11(context->mirrorSrv);
+		//context->mirrorSrv->Release();
 
-  context->ctx11 = NULL;
-  context->dev11 = NULL;
-  context->tex = NULL;
-  context->mirrorSrv = NULL;
-  context->texCrop = NULL;
+	vr::VR_Shutdown(); // Releases mirrorSrv
+	if (context->ctx11)
+		context->ctx11->Release();
+	if (context->dev11)
+	{
+		if (context->dev11->Release() != 0)
+		{
+			warn("win_openvr_deinit: device refcount not zero!");
+		}
+	}
+
+	context->ctx11 = NULL;
+	context->dev11 = NULL;
+	context->tex = NULL;
+	context->mirrorSrv = NULL;
+	context->texCrop = NULL;
 }
 
 static const char *win_openvr_get_name(void *unused)
 {
-  UNUSED_PARAMETER(unused);
-  return "OpenVR Capture";
+	UNUSED_PARAMETER(unused);
+	return "OpenVR Capture";
 }
 
 static void win_openvr_update(void *data, obs_data_t *settings)
 {
-  struct win_openvr *context = (win_openvr*) data;
-  context->righteye = obs_data_get_bool(settings, "righteye");
+	struct win_openvr *context = (win_openvr*)data;
+	context->righteye = obs_data_get_bool(settings, "righteye");
 
-  context->cropleft = (float) obs_data_get_double(settings, "cropleft");
-  context->cropright = (float) obs_data_get_double(settings, "cropright");
-  context->croptop = (float) obs_data_get_double(settings, "croptop");
-  context->cropbottom = (float) obs_data_get_double(settings, "cropbottom");
+	context->cropleft = (float)obs_data_get_double(settings, "cropleft");
+	context->cropright = (float)obs_data_get_double(settings, "cropright");
+	context->croptop = (float)obs_data_get_double(settings, "croptop");
+	context->cropbottom = (float)obs_data_get_double(settings, "cropbottom");
 
-  if (context->initialized)
-  {
-    win_openvr_deinit(data);
-    win_openvr_init(data);
-  }
+	if (context->initialized)
+	{
+		win_openvr_deinit(data);
+		win_openvr_init(data);
+	}
 }
 
 static void win_openvr_defaults(obs_data_t *settings)
 {
-  obs_data_set_default_bool(settings, "righteye", true);
-  obs_data_set_default_double(settings, "cropleft", 0.0f);
-  obs_data_set_default_double(settings, "cropright", 1.0f);
-  obs_data_set_default_double(settings, "croptop", 0.0f);
-  obs_data_set_default_double(settings, "cropbottom", 1.0f);
+	obs_data_set_default_bool(settings, "righteye", true);
+	obs_data_set_default_double(settings, "cropleft", 0.0f);
+	obs_data_set_default_double(settings, "cropright", 1.0f);
+	obs_data_set_default_double(settings, "croptop", 0.0f);
+	obs_data_set_default_double(settings, "cropbottom", 1.0f);
 }
 
 static uint32_t win_openvr_getwidth(void *data)
 {
-  struct win_openvr *context = (win_openvr*) data;
-  return context->width;
+	struct win_openvr *context = (win_openvr*)data;
+	return context->width;
 }
 
 static uint32_t win_openvr_getheight(void *data)
 {
-  struct win_openvr *context = (win_openvr*) data;
-  return context->height;
+	struct win_openvr *context = (win_openvr*)data;
+	return context->height;
 }
 
 static void win_openvr_show(void *data)
 {
-  win_openvr_init(data, true); // When showing do forced init without delay
+	win_openvr_init(data, true); // When showing do forced init without delay
 }
 
 static void win_openvr_hide(void *data)
 {
-  win_openvr_deinit(data);
+	win_openvr_deinit(data);
 }
 
 static void *win_openvr_create(obs_data_t *settings, obs_source_t *source)
 {
-  struct win_openvr *context = (win_openvr*) bzalloc(sizeof(win_openvr));
-  context->source = source;
+	struct win_openvr *context = (win_openvr*)bzalloc(sizeof(win_openvr));
+	context->source = source;
 
-  context->initialized = false;
+	context->initialized = false;
 
-  context->ctx11 = NULL;
-  context->dev11 = NULL;
-  context->tex = NULL;
-  context->texture = NULL;
-  context->texCrop = NULL;
+	context->ctx11 = NULL;
+	context->dev11 = NULL;
+	context->tex = NULL;
+	context->texture = NULL;
+	context->texCrop = NULL;
 
-  context->width = context->height = 100;
+	context->width = context->height = 100;
 
-  char *presets_file = NULL;
-  presets_file = obs_module_file("win-openvr-presets.ini");
-  FILE *f = fopen(presets_file, "rb");
-  if (f)
-  {
-    croppreset p = {0};
-    while (fscanf(f, "%f,%f,%f,%f,%[^\n]\n", &p.top, &p.bottom, &p.left, &p.right, p.name) > 0)
-    {
-      croppresets.push_back(p);
-    }
-    fclose(f);
-  }
-  else
-  {
-    warn("win-openvr-presets.ini not found!");
-  }
-  bfree(presets_file);
-
-  win_openvr_update(context, settings);
-  return context;
+	win_openvr_update(context, settings);
+	return context;
 }
 
 static void win_openvr_destroy(void *data)
 {
-  struct win_openvr *context = (win_openvr*) data;
+	struct win_openvr *context = (win_openvr*)data;
 
-  win_openvr_deinit(data);
-  bfree(context);
+	win_openvr_deinit(data);
+	bfree(context);
 }
 
 static void win_openvr_render(void *data, gs_effect_t *effect)
 {
-  struct win_openvr *context = (win_openvr*) data;
+	struct win_openvr *context = (win_openvr*)data;
 
-  if (context->active && !context->initialized)
-  {
-    // Active & want to render but not initialized - attempt to init
-    win_openvr_init(data);
-  }
+	if (context->active && !context->initialized)
+	{
+		// Active & want to render but not initialized - attempt to init
+		win_openvr_init(data);
+	}
 
-  if (!context->texture || !context->active)
-  {
-    return;
-  }
+	if (!context->texture || !context->active)
+	{
+		return;
+	}
 
-  // Crop from full size mirror texture
-  // This step is required even without cropping as the full res mirror texture is in sRGB space
-  D3D11_BOX poksi = {
-    (UINT) context->x,
-    (UINT) context->y,
-    0,
-    (UINT) context->x + context->width,
-    (UINT) context->y + context->height,
-    1,
-  };
-  context->ctx11->CopySubresourceRegion(context->texCrop, 0, 0, 0, 0, context->tex, 0, &poksi);
-  context->ctx11->Flush();
+	// Crop from full size mirror texture
+	// This step is required even without cropping as the full res mirror texture is in sRGB space
+	D3D11_BOX poksi = {
+	  (UINT)context->x,
+	  (UINT)context->y,
+	  0,
+	  (UINT)context->x + context->width,
+	  (UINT)context->y + context->height,
+	  1,
+	};
+	context->ctx11->CopySubresourceRegion(context->texCrop, 0, 0, 0, 0, context->tex, 0, &poksi);
+	context->ctx11->Flush();
 
-  // Draw from OpenVR shared mirror texture
-  effect = obs_get_base_effect(OBS_EFFECT_OPAQUE);
+	// Draw from OpenVR shared mirror texture
+	effect = obs_get_base_effect(OBS_EFFECT_OPAQUE);
 
-  while (gs_effect_loop(effect, "Draw"))
-  {
-    obs_source_draw(context->texture, 0, 0, 0, 0, false);
-  }
+	while (gs_effect_loop(effect, "Draw"))
+	{
+		obs_source_draw(context->texture, 0, 0, 0, 0, false);
+	}
 }
 
 static void win_openvr_tick(void *data, float seconds)
 {
-  UNUSED_PARAMETER(seconds);
+	UNUSED_PARAMETER(seconds);
 
-  struct win_openvr *context = (win_openvr*) data;
+	struct win_openvr *context = (win_openvr*)data;
 
-  context->active = obs_source_active(context->source);
+	context->active = obs_source_active(context->source);
 
-  if (context->initialized)
-  {
-    vr::VREvent_t e;
-    if (vr::VRSystem()->PollNextEvent(&e, sizeof(vr::VREvent_t)))
-    {
-      if (e.eventType == vr::VREvent_Quit)
-      {
-        // Without this SteamVR will kill OBS process when it exists
-        win_openvr_deinit(data);
-      }
-    }
-  }
+	if (context->initialized)
+	{
+		vr::VREvent_t e;
+
+		// m: added NULL check here cause it was causing crashes when switching scenes that had another OpenVR capture
+		if (vr::VRSystem() != NULL)
+		{
+			if (vr::VRSystem()->PollNextEvent(&e, sizeof(vr::VREvent_t)))
+			{
+				if (e.eventType == vr::VREvent_Quit)
+				{
+					vr::VRSystem()->AcknowledgeQuit_UserPrompt();
+					// Without this SteamVR will kill OBS process when it exits
+					win_openvr_deinit(data);
+				}
+			}
+		}
+	}
 }
 
 static bool crop_preset_changed(obs_properties_t *props, obs_property_t *p, obs_data_t *s)
 {
-  UNUSED_PARAMETER(props);
-  UNUSED_PARAMETER(p);
+	UNUSED_PARAMETER(props);
+	UNUSED_PARAMETER(p);
 
-  int sel = (int) obs_data_get_int(s, "croppreset") - 1;
+	int sel = (int)obs_data_get_int(s, "croppreset") - 1;
 
-  if (sel >= croppresets.size() || sel < 0)
-    return false;
+	if (sel >= croppresets.size() || sel < 0)
+		return false;
 
-  bool flip = obs_data_get_bool(s, "righteye");
+	bool flip = obs_data_get_bool(s, "righteye");
 
-  // Mirror preset horizontally if right eye is captured
-  obs_data_set_double(s, "cropleft", flip ? 1-croppresets[sel].right : croppresets[sel].left);
-  obs_data_set_double(s, "cropright", flip ? 1-croppresets[sel].left : croppresets[sel].right);
-  obs_data_set_double(s, "croptop", croppresets[sel].top);
-  obs_data_set_double(s, "cropbottom", croppresets[sel].bottom);
+	// Mirror preset horizontally if right eye is captured
+	obs_data_set_double(s, "cropleft", flip ? 1 - croppresets[sel].right : croppresets[sel].left);
+	obs_data_set_double(s, "cropright", flip ? 1 - croppresets[sel].left : croppresets[sel].right);
+	obs_data_set_double(s, "croptop", croppresets[sel].top);
+	obs_data_set_double(s, "cropbottom", croppresets[sel].bottom);
 
-  return true;
+	return true;
 }
 
 static bool crop_preset_manual(obs_properties_t *props, obs_property_t *p, obs_data_t *s)
 {
-  UNUSED_PARAMETER(props);
-  UNUSED_PARAMETER(p);
+	UNUSED_PARAMETER(props);
+	UNUSED_PARAMETER(p);
 
-  if (obs_data_get_int(s, "croppreset") != 0)
-  {
-    // Slider moved manually, disable preset
-    obs_data_set_int(s, "croppreset", 0);
-    return true;
-  }
-  return false;
+	if (obs_data_get_int(s, "croppreset") != 0)
+	{
+		// Slider moved manually, disable preset
+		obs_data_set_int(s, "croppreset", 0);
+		return true;
+	}
+	return false;
 }
 
 static bool crop_preset_flip(obs_properties_t *props, obs_property_t *p, obs_data_t *s)
 {
-  int pi = (int) obs_data_get_int(s, "croppreset");
-  if (pi != 0)
-  {
-    // Changed to capture other eye, flip crop preset
-    obs_data_set_int(s, "croppreset", pi);
-    crop_preset_changed(props, p, s);
-    return true;
-  }
-  return true;
+	int pi = (int)obs_data_get_int(s, "croppreset");
+	if (pi != 0)
+	{
+		// Changed to capture other eye, flip crop preset
+		obs_data_set_int(s, "croppreset", pi);
+		crop_preset_changed(props, p, s);
+		return true;
+	}
+	return true;
 }
 
 static obs_properties_t *win_openvr_properties(void *data)
 {
-  UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(data);
 
-  obs_properties_t *props = obs_properties_create();
-  obs_property_t *p;
+	// m: moved preset file loading here
+	struct win_openvr *context = (win_openvr*)data;
 
-  p = obs_properties_add_bool(props, "righteye", obs_module_text("RightEye"));
-  obs_property_set_modified_callback(p, crop_preset_flip);
+	char *presets_file = NULL;
+	presets_file = obs_module_file("win-openvr-presets.ini");
+	FILE *f = fopen(presets_file, "rb");
+	if (f)
+	{
+		croppreset p = { 0 };
+		while (fscanf(f, "%f,%f,%f,%f,%[^\n]\n", &p.top, &p.bottom, &p.left, &p.right, p.name) > 0)
+		{
+			croppresets.push_back(p);
+		}
+		fclose(f);
+	}
+	else
+	{
+		warn("win-openvr-presets.ini not found!");
+	}
+	bfree(presets_file);
+	// m: /
 
-  p = obs_properties_add_list(props, "croppreset", obs_module_text("Preset"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
-  obs_property_list_add_int(p, "none", 0);
-  int i = 1;
-  for (const auto c : croppresets)
-  {
-    obs_property_list_add_int(p, c.name, i++);
-  }
-  obs_property_set_modified_callback(p, crop_preset_changed);
 
-  p = obs_properties_add_float_slider(props, "croptop", obs_module_text("CropTop"), 0.0, 0.5, 0.01);
-  obs_property_set_modified_callback(p, crop_preset_manual);
-  p = obs_properties_add_float_slider(props, "cropbottom", obs_module_text("CropBottom"), 0.5, 1.0, 0.01);
-  obs_property_set_modified_callback(p, crop_preset_manual);
-  p = obs_properties_add_float_slider(props, "cropleft", obs_module_text("CropLeft"), 0.0, 0.5, 0.01);
-  obs_property_set_modified_callback(p, crop_preset_manual);
-  p = obs_properties_add_float_slider(props, "cropright", obs_module_text("CropRight"), 0.5, 1.0, 0.01);
-  obs_property_set_modified_callback(p, crop_preset_manual);
+	obs_properties_t *props = obs_properties_create();
+	obs_property_t *p;
 
-  return props;
+	p = obs_properties_add_bool(props, "righteye", obs_module_text("RightEye"));
+	obs_property_set_modified_callback(p, crop_preset_flip);
+
+	p = obs_properties_add_list(props, "croppreset", obs_module_text("Preset"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(p, "none", 0);
+	int i = 1;
+	for (const auto c : croppresets)
+	{
+		obs_property_list_add_int(p, c.name, i++);
+	}
+	obs_property_set_modified_callback(p, crop_preset_changed);
+
+	p = obs_properties_add_float_slider(props, "croptop", obs_module_text("CropTop"), 0.0, 0.5, 0.01);
+	obs_property_set_modified_callback(p, crop_preset_manual);
+	p = obs_properties_add_float_slider(props, "cropbottom", obs_module_text("CropBottom"), 0.5, 1.0, 0.01);
+	obs_property_set_modified_callback(p, crop_preset_manual);
+	p = obs_properties_add_float_slider(props, "cropleft", obs_module_text("CropLeft"), 0.0, 0.5, 0.01);
+	obs_property_set_modified_callback(p, crop_preset_manual);
+	p = obs_properties_add_float_slider(props, "cropright", obs_module_text("CropRight"), 0.5, 1.0, 0.01);
+	obs_property_set_modified_callback(p, crop_preset_manual);
+
+	return props;
 }
 
 static struct obs_source_info win_openvr_info;
 
 extern "C" {
-OBS_DECLARE_MODULE()
-OBS_MODULE_USE_DEFAULT_LOCALE("win-openvr", "en-US")
+	OBS_DECLARE_MODULE()
+		OBS_MODULE_USE_DEFAULT_LOCALE("win-openvr", "en-US")
 
-bool obs_module_load(void)
-{
-  win_openvr_info.id             = "win-openvr";
-  win_openvr_info.type           = OBS_SOURCE_TYPE_INPUT;
-  win_openvr_info.output_flags   = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW;
-  win_openvr_info.get_name       = win_openvr_get_name;
-  win_openvr_info.create         = win_openvr_create;
-  win_openvr_info.destroy        = win_openvr_destroy;
-  win_openvr_info.update         = win_openvr_update;
-  win_openvr_info.get_defaults   = win_openvr_defaults;
-  win_openvr_info.show           = win_openvr_show;
-  win_openvr_info.hide           = win_openvr_hide;
-  win_openvr_info.get_width      = win_openvr_getwidth;
-  win_openvr_info.get_height     = win_openvr_getheight;
-  win_openvr_info.video_render   = win_openvr_render;
-  win_openvr_info.video_tick     = win_openvr_tick;
-  win_openvr_info.get_properties = win_openvr_properties;
+		bool obs_module_load(void)
+	{
+		win_openvr_info.id = "win-openvr";
+		win_openvr_info.type = OBS_SOURCE_TYPE_INPUT;
+		win_openvr_info.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW;
+		win_openvr_info.get_name = win_openvr_get_name;
+		win_openvr_info.create = win_openvr_create;
+		win_openvr_info.destroy = win_openvr_destroy;
+		win_openvr_info.update = win_openvr_update;
+		win_openvr_info.get_defaults = win_openvr_defaults;
+		win_openvr_info.show = win_openvr_show;
+		win_openvr_info.hide = win_openvr_hide;
+		win_openvr_info.get_width = win_openvr_getwidth;
+		win_openvr_info.get_height = win_openvr_getheight;
+		win_openvr_info.video_render = win_openvr_render;
+		win_openvr_info.video_tick = win_openvr_tick;
+		win_openvr_info.get_properties = win_openvr_properties;
 
-  obs_register_source(&win_openvr_info);
-  return true;
-}
+		obs_register_source(&win_openvr_info);
+		return true;
+	}
 } // extern "C"
