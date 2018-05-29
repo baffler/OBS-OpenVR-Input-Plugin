@@ -4,14 +4,12 @@
 //
 
 #define _CRT_SECURE_NO_WARNINGS
-extern "C" {
+
 #include <obs-module.h>
 #include <graphics/image-file.h>
 #include <util/platform.h>
 #include <util/dstr.h>
 #include <sys/stat.h>
-}
-
 #include <d3d11.h>
 #include <vector>
 
@@ -24,16 +22,15 @@ extern "C" {
 #pragma comment(lib, "lib/win32/openvr_api.lib")
 #endif
 
-#define blog(log_level, format, ...) \
-    blog(log_level, "[win_openvr: '%s'] " format, \
-            obs_source_get_name(context->source), ##__VA_ARGS__)
+#define blog(log_level, message, ...) \
+		blog(log_level, "[win_openvr] " message, ##__VA_ARGS__)
 
-#define debug(format, ...) \
-    blog(LOG_DEBUG, format, ##__VA_ARGS__)
-#define info(format, ...) \
-    blog(LOG_INFO, format, ##__VA_ARGS__)
-#define warn(format, ...) \
-    blog(LOG_WARNING, format, ##__VA_ARGS__)
+#define debug(message, ...) \
+		blog(LOG_DEBUG, "[%s] " message, obs_source_get_name(context->source), ##__VA_ARGS__)
+#define info(message, ...) \
+		blog(LOG_INFO, "[%s] " message, obs_source_get_name(context->source), ##__VA_ARGS__)
+#define warn(message, ...) \
+		blog(LOG_WARNING, "[%s] " message, obs_source_get_name(context->source), ##__VA_ARGS__)
 
 struct croppreset {
 	char name[128];
@@ -194,8 +191,8 @@ static void win_openvr_deinit(void *data)
 	if (context->texCrop)
 		context->texCrop->Release();
 	//  if (context->mirrorSrv)
-		//vr::VRCompositor()->ReleaseMirrorTextureD3D11(context->mirrorSrv);
-		//context->mirrorSrv->Release();
+	//vr::VRCompositor()->ReleaseMirrorTextureD3D11(context->mirrorSrv);
+	//context->mirrorSrv->Release();
 
 	vr::VR_Shutdown(); // Releases mirrorSrv
 	if (context->ctx11)
@@ -314,12 +311,12 @@ static void win_openvr_render(void *data, gs_effect_t *effect)
 	// Crop from full size mirror texture
 	// This step is required even without cropping as the full res mirror texture is in sRGB space
 	D3D11_BOX poksi = {
-	  (UINT)context->x,
-	  (UINT)context->y,
-	  0,
-	  (UINT)context->x + context->width,
-	  (UINT)context->y + context->height,
-	  1,
+		(UINT)context->x,
+		(UINT)context->y,
+		0,
+		(UINT)context->x + context->width,
+		(UINT)context->y + context->height,
+		1,
 	};
 	context->ctx11->CopySubresourceRegion(context->texCrop, 0, 0, 0, 0, context->tex, 0, &poksi);
 	context->ctx11->Flush();
@@ -345,7 +342,7 @@ static void win_openvr_tick(void *data, float seconds)
 	{
 		vr::VREvent_t e;
 
-		// m: added NULL check here cause it was causing crashes when switching scenes that had another OpenVR capture
+		// added NULL check here cause it was causing crashes when switching scenes that had another OpenVR capture
 		if (vr::VRSystem() != NULL)
 		{
 			if (vr::VRSystem()->PollNextEvent(&e, sizeof(vr::VREvent_t)))
@@ -354,6 +351,7 @@ static void win_openvr_tick(void *data, float seconds)
 				{
 					vr::VRSystem()->AcknowledgeQuit_UserPrompt();
 					// Without this SteamVR will kill OBS process when it exits
+					// TODO: OBS process will still be killed in some cases by SteamVR
 					win_openvr_deinit(data);
 				}
 			}
@@ -413,29 +411,6 @@ static obs_properties_t *win_openvr_properties(void *data)
 {
 	UNUSED_PARAMETER(data);
 
-	// m: moved preset file loading here
-	struct win_openvr *context = (win_openvr*)data;
-
-	char *presets_file = NULL;
-	presets_file = obs_module_file("win-openvr-presets.ini");
-	FILE *f = fopen(presets_file, "rb");
-	if (f)
-	{
-		croppreset p = { 0 };
-		while (fscanf(f, "%f,%f,%f,%f,%[^\n]\n", &p.top, &p.bottom, &p.left, &p.right, p.name) > 0)
-		{
-			croppresets.push_back(p);
-		}
-		fclose(f);
-	}
-	else
-	{
-		warn("win-openvr-presets.ini not found!");
-	}
-	bfree(presets_file);
-	// m: /
-
-
 	obs_properties_t *props = obs_properties_create();
 	obs_property_t *p;
 
@@ -463,31 +438,58 @@ static obs_properties_t *win_openvr_properties(void *data)
 	return props;
 }
 
-static struct obs_source_info win_openvr_info;
-
-extern "C" {
-	OBS_DECLARE_MODULE()
-		OBS_MODULE_USE_DEFAULT_LOCALE("win-openvr", "en-US")
-
-		bool obs_module_load(void)
+static void load_presets(void)
+{
+	char *presets_file = NULL;
+	presets_file = obs_module_file("win-openvr-presets.ini");
+	if (presets_file)
 	{
-		win_openvr_info.id = "win-openvr";
-		win_openvr_info.type = OBS_SOURCE_TYPE_INPUT;
-		win_openvr_info.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW;
-		win_openvr_info.get_name = win_openvr_get_name;
-		win_openvr_info.create = win_openvr_create;
-		win_openvr_info.destroy = win_openvr_destroy;
-		win_openvr_info.update = win_openvr_update;
-		win_openvr_info.get_defaults = win_openvr_defaults;
-		win_openvr_info.show = win_openvr_show;
-		win_openvr_info.hide = win_openvr_hide;
-		win_openvr_info.get_width = win_openvr_getwidth;
-		win_openvr_info.get_height = win_openvr_getheight;
-		win_openvr_info.video_render = win_openvr_render;
-		win_openvr_info.video_tick = win_openvr_tick;
-		win_openvr_info.get_properties = win_openvr_properties;
-
-		obs_register_source(&win_openvr_info);
-		return true;
+		FILE *f = fopen(presets_file, "rb");
+		if (f)
+		{
+			croppreset p = { 0 };
+			while (fscanf(f, "%f,%f,%f,%f,%[^\n]\n", &p.top, &p.bottom, &p.left, &p.right, p.name) > 0)
+			{
+				croppresets.push_back(p);
+			}
+			fclose(f);
+		}
+		else
+		{
+			blog(LOG_WARNING, "Failed to load presets file 'win-openvr-presets.ini' not found!");
+		}
+		bfree(presets_file);
 	}
-} // extern "C"
+	else
+	{
+		blog(LOG_WARNING, "Failed to load presets file 'win-openvr-presets.ini' not found!");
+	}
+}
+
+
+OBS_DECLARE_MODULE()
+OBS_MODULE_USE_DEFAULT_LOCALE("win-openvr", "en-US")
+
+bool obs_module_load(void)
+{
+	obs_source_info info	= {};
+	info.id			= "win-openvr";
+	info.type		= OBS_SOURCE_TYPE_INPUT;
+	info.output_flags	= OBS_SOURCE_VIDEO |
+				  OBS_SOURCE_CUSTOM_DRAW;
+	info.get_name		= win_openvr_get_name;
+	info.create		= win_openvr_create;
+	info.destroy		= win_openvr_destroy;
+	info.update		= win_openvr_update;
+	info.get_defaults	= win_openvr_defaults;
+	info.show		= win_openvr_show;
+	info.hide		= win_openvr_hide;
+	info.get_width		= win_openvr_getwidth;
+	info.get_height		= win_openvr_getheight;
+	info.video_render	= win_openvr_render;
+	info.video_tick		= win_openvr_tick;
+	info.get_properties	= win_openvr_properties;
+	obs_register_source(&info);
+	load_presets();
+	return true;
+}
