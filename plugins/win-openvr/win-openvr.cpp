@@ -473,7 +473,7 @@ OBS_MODULE_USE_DEFAULT_LOCALE("win-openvr", "en-US")
 bool obs_module_load(void)
 {
 	obs_source_info info	= {};
-	info.id			= "win-openvr";
+	info.id			= "openvr_capture";
 	info.type		= OBS_SOURCE_TYPE_INPUT;
 	info.output_flags	= OBS_SOURCE_VIDEO |
 				  OBS_SOURCE_CUSTOM_DRAW;
