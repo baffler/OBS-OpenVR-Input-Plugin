@@ -16,7 +16,7 @@ Compiling:
 * Close OBS Studio or Streamlabs OBS if it's open.
 * Extract the zip file into your OBS studio directory or Streamlabs OBS libobs directory.
 	- OBS Studio; typically installed in `C:\Program Files (x86)\obs-studio` and choose Replace Files if prompted.
-	- Streamlabs OBS; typically installed in `C:\Program Files\Streamlabs OBS\resources\app.asar.unpacked\node_modules\obs-studio-node\libobs` and choose Replace Files if prompted.
+	- Streamlabs OBS; typically installed in `C:\Program Files\Streamlabs OBS\resources\app.asar.unpacked\node_modules\obs-studio-node` and choose Replace Files if prompted.
 * Launch OBS or Streamlabs OBS and add a new source to one of your scenes, the source name is "OpenVR Capture"
 
 ![Extract Files](https://user-images.githubusercontent.com/1980600/40620530-22aca280-6267-11e8-96dc-4978675d3e80.png)
