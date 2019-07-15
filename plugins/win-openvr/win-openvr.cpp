@@ -70,6 +70,8 @@ struct win_openvr {
 	bool active;
 };
 
+bool IsVRSystemInitialized = false;
+
 static void win_openvr_init(void *data, bool forced = false)
 {
 	struct win_openvr *context = (win_openvr*)data;
@@ -93,6 +95,7 @@ static void win_openvr_init(void *data, bool forced = false)
 		context->lastCheckTick = GetTickCount();
 		return;
 	}
+	IsVRSystemInitialized = true;
 
 	HRESULT hr;
 	D3D_FEATURE_LEVEL featureLevel;
@@ -194,7 +197,12 @@ static void win_openvr_deinit(void *data)
 	//vr::VRCompositor()->ReleaseMirrorTextureD3D11(context->mirrorSrv);
 	//context->mirrorSrv->Release();
 
-	vr::VR_Shutdown(); // Releases mirrorSrv
+	if (IsVRSystemInitialized)
+	{
+		vr::VR_Shutdown(); // Releases mirrorSrv
+		IsVRSystemInitialized = false;
+	}
+
 	if (context->ctx11)
 		context->ctx11->Release();
 	if (context->dev11)
@@ -342,20 +350,26 @@ static void win_openvr_tick(void *data, float seconds)
 	{
 		vr::VREvent_t e;
 
-		// added NULL check here cause it was causing crashes when switching scenes that had another OpenVR capture
-		if (vr::VRSystem() != NULL)
+		if ((vr::VRSystem() != NULL) && (IsVRSystemInitialized))
 		{
 			if (vr::VRSystem()->PollNextEvent(&e, sizeof(vr::VREvent_t)))
 			{
 				if (e.eventType == vr::VREvent_Quit)
 				{
-					vr::VRSystem()->AcknowledgeQuit_UserPrompt();
+					//vr::VRSystem()->AcknowledgeQuit_Exiting();
+					//vr::VRSystem()->AcknowledgeQuit_UserPrompt();
+
 					// Without this SteamVR will kill OBS process when it exits
-					// TODO: OBS process will still be killed in some cases by SteamVR
 					win_openvr_deinit(data);
 				}
 			}
 		}
+		else if (context->active)
+		{
+			context->initialized = false;
+			win_openvr_init(data);
+		}
+
 	}
 }
 
