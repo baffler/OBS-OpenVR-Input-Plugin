@@ -357,6 +357,9 @@ static void win_openvr_tick(void *data, float seconds)
 			{
 				if (e.eventType == vr::VREvent_Quit)
 				{
+					//vr::VRSystem()->AcknowledgeQuit_Exiting();
+					//vr::VRSystem()->AcknowledgeQuit_UserPrompt();
+
 					// Without this SteamVR will kill OBS process when it exits
 					win_openvr_deinit(data);
 				}
