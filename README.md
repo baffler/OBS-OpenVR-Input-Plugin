@@ -11,7 +11,7 @@ Compiling:
 - Compile with visual studio. Only 64bit version has been tested.
 
 # Installation
-* Download latest zip release from https://github.com/baffler/OBS-OpenVR-Input-Plugin/releases (make sure not to download one labled "Source Code").
+* Download latest zip release from https://github.com/baffler/OBS-OpenVR-Input-Plugin/releases (make sure not to download one labeled "Source Code").
 	- The zip file you download should contain a "data" and "obs-plugins" folder with a readme file. If not, makes sure to download the release zip file.
 * Close OBS Studio or Streamlabs OBS if it's open.
 * Extract the zip file into your OBS studio directory or Streamlabs OBS directory.
