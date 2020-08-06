@@ -165,7 +165,7 @@ static void win_openvr_init(void *data, bool forced = false)
 
 	D3D11_TEXTURE2D_DESC desc;
 	tex2D->GetDesc(&desc);
-	if (desc.Width == 0 || desc.Height == 0 ) {
+	if (desc.Width == 0 || desc.Height == 0) {
 		warn("win_openvr_show: device width or height is 0");
 		return;
 	}
@@ -280,8 +280,16 @@ static void win_openvr_update(void *data, obs_data_t *settings)
 	struct win_openvr *context = (win_openvr*)data;
 	context->righteye = obs_data_get_bool(settings, "righteye");
 
-	context->crop.left = obs_data_get_int(settings, "cropleft");
-	context->crop.right = obs_data_get_int(settings, "cropright");
+	if (context->righteye)
+	{
+		context->crop.left = obs_data_get_int(settings, "cropleft");
+		context->crop.right = obs_data_get_int(settings, "cropright");
+	}
+	else
+	{
+		context->crop.left = obs_data_get_int(settings, "cropright");
+		context->crop.right = obs_data_get_int(settings, "cropleft");
+	}
 	context->crop.top = obs_data_get_int(settings, "croptop");
 	context->crop.bottom = obs_data_get_int(settings, "cropbottom");
 
@@ -436,8 +444,8 @@ static bool crop_preset_changed(obs_properties_t *props, obs_property_t *p, obs_
 
 	// Mirror preset horizontally if right eye is captured
 	const crop &crop = croppresets[sel].crop;
-	obs_data_set_double(s, "cropleft", flip ? crop.right : crop.left);
-	obs_data_set_double(s, "cropright", flip ? crop.left : crop.right);
+	obs_data_set_double(s, "cropleft", crop.left);
+	obs_data_set_double(s, "cropright", crop.right);
 	obs_data_set_double(s, "croptop", crop.top);
 	obs_data_set_double(s, "cropbottom", crop.bottom);
 
@@ -460,15 +468,25 @@ static bool crop_preset_manual(obs_properties_t *props, obs_property_t *p, obs_d
 
 static bool crop_preset_flip(obs_properties_t *props, obs_property_t *p, obs_data_t *s)
 {
-	int pi = (int)obs_data_get_int(s, "croppreset");
-	if (pi != 0)
-	{
-		// Changed to capture other eye, flip crop preset
-		obs_data_set_int(s, "croppreset", pi);
-		crop_preset_changed(props, p, s);
-		return true;
-	}
+	bool flip = obs_data_get_bool(s, "righteye");
+	obs_property_set_description(obs_properties_get(props, "cropleft"), flip ? obs_module_text("CropLeft") : obs_module_text("CropRight"));
+	obs_property_set_description(obs_properties_get(props, "cropright"), flip ? obs_module_text("CropRight") : obs_module_text("CropLeft"));
 	return true;
+}
+
+static bool button_reset_callback(obs_properties_t *props, obs_property_t *p, void *data)
+{
+	struct win_openvr *context = (win_openvr*)data;
+
+	if (GetTickCount() - 2000 < context->lastCheckTick)
+	{
+		return false;
+	}
+
+	context->lastCheckTick = GetTickCount();
+	context->initialized = false;
+	win_openvr_deinit(data);
+	return false;
 }
 
 static obs_properties_t *win_openvr_properties(void *data)
@@ -502,6 +520,8 @@ static obs_properties_t *win_openvr_properties(void *data)
 	p = obs_properties_add_int_slider(props, "cropright", obs_module_text("CropRight"), 0, 0, 1);
 	context->crop_right = p;
 	obs_property_set_modified_callback(p, crop_preset_manual);
+
+	p = obs_properties_add_button(props, "resetsteamvr", "Reinitialize OpenVR Source", button_reset_callback);
 
 	win_openvr_update_properties(data);
 
@@ -542,23 +562,23 @@ OBS_MODULE_USE_DEFAULT_LOCALE("win-openvr", "en-US")
 
 bool obs_module_load(void)
 {
-	obs_source_info info	= {};
-	info.id			= "openvr_capture";
-	info.type		= OBS_SOURCE_TYPE_INPUT;
-	info.output_flags	= OBS_SOURCE_VIDEO |
-				  OBS_SOURCE_CUSTOM_DRAW;
-	info.get_name		= win_openvr_get_name;
-	info.create		= win_openvr_create;
-	info.destroy		= win_openvr_destroy;
-	info.update		= win_openvr_update;
-	info.get_defaults	= win_openvr_defaults;
-	info.show		= win_openvr_show;
-	info.hide		= win_openvr_hide;
-	info.get_width		= win_openvr_getwidth;
-	info.get_height		= win_openvr_getheight;
-	info.video_render	= win_openvr_render;
-	info.video_tick		= win_openvr_tick;
-	info.get_properties	= win_openvr_properties;
+	obs_source_info info = {};
+	info.id = "openvr_capture";
+	info.type = OBS_SOURCE_TYPE_INPUT;
+	info.output_flags = OBS_SOURCE_VIDEO |
+		OBS_SOURCE_CUSTOM_DRAW;
+	info.get_name = win_openvr_get_name;
+	info.create = win_openvr_create;
+	info.destroy = win_openvr_destroy;
+	info.update = win_openvr_update;
+	info.get_defaults = win_openvr_defaults;
+	info.show = win_openvr_show;
+	info.hide = win_openvr_hide;
+	info.get_width = win_openvr_getwidth;
+	info.get_height = win_openvr_getheight;
+	info.video_render = win_openvr_render;
+	info.video_tick = win_openvr_tick;
+	info.get_properties = win_openvr_properties;
 	obs_register_source(&info);
 	load_presets();
 	return true;
